@@ -23,13 +23,52 @@ def add_decoded(element, elements_list):
     elements_list.append(element)
 
 
-def get_meli_info(phones):
+def get_meli_users_info(users, items):
+    df_users_items = pd.DataFrame()
+    df_users_items['usuarios'] = users
+    df_users_items['items'] = items
+    df_users_count = pd.DataFrame({'count': df_users_items.groupby(['usuarios', 'items']).size()}).reset_index()
+
+    col_nicknames = []
+    col_registration_date = []
+    col_transac_comp = []
+    col_transac_canc = []
+    col_rate_pos = []
+    col_rate_neg = []
+    col_rate_neu = []
+
+    print('Gathering users data!')
+    for user in tqdm(df_users_count['usuarios']):
+        response = meli.get('/users/' + str(user))
+        json_user_response = json.loads(response.content)
+        add_decoded(json_user_response['nickname'], col_nicknames)
+        add_decoded(json_user_response['registration_date'], col_registration_date)
+        col_transac_comp.append(json_user_response['seller_reputation']['transactions']['completed'])
+        col_transac_canc.append(json_user_response['seller_reputation']['transactions']['canceled'])
+        col_rate_neg.append(json_user_response['seller_reputation']['transactions']['ratings']['negative'])
+        col_rate_pos.append(json_user_response['seller_reputation']['transactions']['ratings']['positive'])
+        col_rate_neu.append(json_user_response['seller_reputation']['transactions']['ratings']['neutral'])
+
+    df_users_count['Nickname'] = col_nicknames
+    df_users_count['Registration Date'] = col_registration_date
+    df_users_count['Transactions Completed'] = col_transac_comp
+    df_users_count['Transactions Canceled'] = col_transac_canc
+    df_users_count['Positive Rating'] = col_rate_pos
+    df_users_count['Negative Rating'] = col_rate_neg
+    df_users_count['Neutral Rating'] = col_rate_neu
+    df_users_count.to_csv('users-data.csv')
+    print('users-data.csv ready!')
+
+
+def get_meli_items_info(phones):
     col_items = []
     col_titles = []
     col_prices = []
     col_states = []
     col_cities = []
+    col_users = []
 
+    print('Gathering phones data!')
     for phone in tqdm(phones):
         for offset in ['0', '50', '100']:
             response = meli.get('/sites/MLA/search?q=' + phone.name + '&limit=50&offset=' + offset)
@@ -40,6 +79,7 @@ def get_meli_info(phones):
                 col_prices.append(result['price'])
                 add_decoded(result['address']['state_name'], col_states)
                 add_decoded(result['address']['city_name'], col_cities)
+                col_users.append(result['seller']['id'])
 
     csv_df = pd.DataFrame()
     csv_df['Item'] = col_items
@@ -47,13 +87,17 @@ def get_meli_info(phones):
     csv_df['Price'] = col_prices
     csv_df['State'] = col_states
     csv_df['City'] = col_cities
-
+    csv_df['User'] = col_users
     csv_df.to_csv('phones-data.csv')
+    print('phones-data.csv ready!')
+
+    get_meli_users_info(col_users, col_items)
 
 def get_specs_info(phones):
     phones_list = []
 
-    for phone in phones:
+    print('Gathering specs data!')
+    for phone in tqdm(phones):
         categories_txt = []
         specs_txt = []
 
@@ -65,22 +109,20 @@ def get_specs_info(phones):
             add_decoded(category.text[1:], categories_txt)
         filter(lambda x: x != 'Memory', categories_txt)
         categories_txt.append('Name')
-        #categories_txt = list(dict.fromkeys(categories_txt))
 
         specs = soup.select('.specs')
         for spec in specs:
             add_decoded(spec.text, specs_txt)
         specs_txt.append(phone.name)
-        #specs_txt = list(dict.fromkeys(specs_txt))
 
         cat_specs_dict = dict(zip(categories_txt, specs_txt))
 
         phones_list.append(cat_specs_dict)
 
-        #phone_dict[phone.name] = cat_specs_dict
-
     with open('phones-specs.json', 'w') as fp:
         json.dump(phones_list, fp)
+
+    print('phones-specs.json ready!')
 
 
 @app.route('/authorize')
@@ -102,7 +144,7 @@ def get_info():
     moto_x_style = Phone('Moto X Style', 'https://www.phonearena.com/phones/Motorola-Moto-X-Style_id9553')
 
     phones = [iphone_7, samsung_s8, moto_x_style]
-    get_meli_info(phones)
+    get_meli_items_info(phones)
     get_specs_info(phones)
 
 def main():

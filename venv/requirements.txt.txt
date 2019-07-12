@@ -1,0 +1,8 @@
+bottle
+tqdm
+json
+unicodedata
+pandas
+requests
+lxml
+beautifulsoup4
