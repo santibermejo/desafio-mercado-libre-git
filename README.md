@@ -14,7 +14,7 @@ pip install -r requirements.txt
 ## Como arrancar
 Para correrlo, solo es necesario ejecutar el siguiente comando dentro de `desafio-mercado-libre-git` / `venv`
 ```
-python app.py
+python script.py
 ```
 
 Esto nos creara tres archivos:

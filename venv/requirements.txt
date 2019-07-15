@@ -1,6 +1,5 @@
 bottle
 tqdm
-pandas
 requests
 lxml
 beautifulsoup4

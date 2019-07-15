@@ -11,8 +11,6 @@ import bs4
 import requests
 import ConfigParser
 
-sys.path.append('../lib')
-
 config = ConfigParser.RawConfigParser()
 configFilePath = r'config.txt'
 config.read(configFilePath)
