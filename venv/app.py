@@ -1,102 +1,96 @@
-from bottle import Bottle, run, template, route, request
 from meli import Meli
 from tqdm import tqdm
 from phone import Phone
 
+
 import json
 import unicodedata
 import sys
-import pandas as pd
 import os
 import bs4
 import requests
+import ConfigParser
 
 sys.path.append('../lib')
 
-meli = Meli(client_id='3076720226288544', client_secret='L8A6zuXf9IsG2qzm1FL7ip3YsOl9do7C')
+config = ConfigParser.RawConfigParser()
+configFilePath = r'config.txt'
+config.read(configFilePath)
 
-app = Bottle()
+try:
+    code = config.get('file', 'code')
+    url = config.get('file', 'url')
+    client_id = config.get('file', 'client_id')
+    client_secret = config.get('file', 'client_secret')
+except ConfigParser.NoOptionError:
+    print('Could not read configuration file')
+    sys.exit(1)
+
+meli = Meli(client_id=client_id, client_secret=client_secret)
 
 
-def add_decoded(element, elements_list):
-    element = unicodedata.normalize('NFKD', element).encode('ascii', 'ignore')
-    elements_list.append(element)
+def decode(element):
+    """
+    Convierte unicode a string
+    """
+    return unicodedata.normalize('NFKD', element).encode('ascii', 'ignore')
 
 
 def get_meli_users_info(users, items):
-    df_users_items = pd.DataFrame()
-    df_users_items['usuarios'] = users
-    df_users_items['items'] = items
-    df_users_count = pd.DataFrame({'count': df_users_items.groupby(['usuarios', 'items']).size()}).reset_index()
+    """
+    Genera un .json a partir de informacion extraida de usuarios de la SDK de MercadoLibre
+    """
+    meli_users_json = []
+    users_items = zip(users, items)
 
-    col_nicknames = []
-    col_registration_date = []
-    col_transac_comp = []
-    col_transac_canc = []
-    col_rate_pos = []
-    col_rate_neg = []
-    col_rate_neu = []
+    print('Gathering users data...')
 
-    print('Gathering users data!')
-    for user in tqdm(df_users_count['usuarios']):
+    for user, item in tqdm(users_items):
         response = meli.get('/users/' + str(user))
         json_user_response = json.loads(response.content)
-        add_decoded(json_user_response['nickname'], col_nicknames)
-        add_decoded(json_user_response['registration_date'], col_registration_date)
-        col_transac_comp.append(json_user_response['seller_reputation']['transactions']['completed'])
-        col_transac_canc.append(json_user_response['seller_reputation']['transactions']['canceled'])
-        col_rate_neg.append(json_user_response['seller_reputation']['transactions']['ratings']['negative'])
-        col_rate_pos.append(json_user_response['seller_reputation']['transactions']['ratings']['positive'])
-        col_rate_neu.append(json_user_response['seller_reputation']['transactions']['ratings']['neutral'])
-
-    df_users_count['Nickname'] = col_nicknames
-    df_users_count['Registration Date'] = col_registration_date
-    df_users_count['Transactions Completed'] = col_transac_comp
-    df_users_count['Transactions Canceled'] = col_transac_canc
-    df_users_count['Positive Rating'] = col_rate_pos
-    df_users_count['Negative Rating'] = col_rate_neg
-    df_users_count['Neutral Rating'] = col_rate_neu
-    df_users_count.to_csv('users-data.csv')
-    print('users-data.csv ready!')
+        json_user_response['item'] = item
+        meli_users_json.append(json_user_response)
 
 
-def get_meli_items_info(phones):
-    col_items = []
-    col_titles = []
-    col_prices = []
-    col_states = []
-    col_cities = []
+    with open('users-data.json', 'w') as fp:
+        json.dump(meli_users_json, fp)
+    print('users-data.json ready!')
+
+
+def get_meli_phones_info(phones):
+    """
+    Genera un .json a partir de informacion extraida de items de la SDK de MercadoLibre
+    """
     col_users = []
+    col_items = []
 
-    print('Gathering phones data!')
+    print('Gathering phones data...')
+    meli_phones_json = []
     for phone in tqdm(phones):
+        # Utilizo  offset por la limitacion de 50 registros del GET
         for offset in ['0', '50', '100']:
             response = meli.get('/sites/MLA/search?q=' + phone.name + '&limit=50&offset=' + offset)
             json_response = json.loads(response.content)
             for result in json_response['results']:
-                col_items.append(phone.name)
-                add_decoded(result['title'], col_titles)
-                col_prices.append(result['price'])
-                add_decoded(result['address']['state_name'], col_states)
-                add_decoded(result['address']['city_name'], col_cities)
+                result['item_name'] = phone.name
                 col_users.append(result['seller']['id'])
+                col_items.append(phone.name)
+            meli_phones_json.append(json_response['results'])
 
-    csv_df = pd.DataFrame()
-    csv_df['Item'] = col_items
-    csv_df['Title'] = col_titles
-    csv_df['Price'] = col_prices
-    csv_df['State'] = col_states
-    csv_df['City'] = col_cities
-    csv_df['User'] = col_users
-    csv_df.to_csv('phones-data.csv')
-    print('phones-data.csv ready!')
+    flat_list = [item for sublist in meli_phones_json for item in sublist]
+    with open('phones-data.json', 'w') as fp:
+        json.dump(flat_list, fp)
 
-    get_meli_users_info(col_users, col_items)
+    return col_users, col_items
+
 
 def get_specs_info(phones):
+    """
+    Genera un .json a partir de informacion extraida de phonearena.com
+    """
     phones_list = []
 
-    print('Gathering specs data!')
+    print('Gathering specs data...')
     for phone in tqdm(phones):
         categories_txt = []
         specs_txt = []
@@ -104,17 +98,21 @@ def get_specs_info(phones):
         res = requests.get(phone.url)
         soup = bs4.BeautifulSoup(res.text, 'lxml')
 
+        # Me traigo solo los datos con clase 'category'
         categories = soup.select('.category')
         for category in categories:
-            add_decoded(category.text[1:], categories_txt)
+            categories_txt.append(decode(category.text[1:]))
+        # Filtro Memory porque phonearena la carga comk oculta y viene sin datos
         filter(lambda x: x != 'Memory', categories_txt)
         categories_txt.append('Name')
 
+        # Filtro los specs
         specs = soup.select('.specs')
         for spec in specs:
-            add_decoded(spec.text, specs_txt)
+            specs_txt.append(decode(spec.text))
         specs_txt.append(phone.name)
 
+        # Meto todo en un diccionario con categoria como clave
         cat_specs_dict = dict(zip(categories_txt, specs_txt))
 
         phones_list.append(cat_specs_dict)
@@ -124,33 +122,16 @@ def get_specs_info(phones):
 
     print('phones-specs.json ready!')
 
-
-@app.route('/authorize')
-def authorize():
-    if request.query.get('TG-5d23e4e8383153000610ce14-200616880'):
-        meli.authorize(request.query.get('TG-5d23e4e8383153000610ce14-200616880'), 'http://localhost:8000/authorize')
-    return meli.access_token
-
-
-@app.route('/login')
-def login():
-    return "<a href='"+meli.auth_url(redirect_URI='http://localhost:8000/authorize')+"'>Login</a>"
-
-
-@app.route('/get_info')
-def get_info():
+def main():
     iphone_7 = Phone('Iphone 7', 'https://www.phonearena.com/phones/Apple-iPhone-7_id9815')
     samsung_s8 = Phone('Samsung s8', 'https://www.phonearena.com/phones/Samsung-Galaxy-S8_id10311')
     moto_x_style = Phone('Moto X Style', 'https://www.phonearena.com/phones/Motorola-Moto-X-Style_id9553')
 
     phones = [iphone_7, samsung_s8, moto_x_style]
-    get_meli_items_info(phones)
+    col_users, col_items = get_meli_phones_info(phones)
+    get_meli_users_info(col_users, col_items)
     get_specs_info(phones)
-
-def main():
-    run(app, host='localhost', port=8000, reloader=True)
 
 
 if __name__ == "__main__":
     main()
-

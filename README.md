@@ -6,7 +6,7 @@
 ## Instalar dependencias
 Se pueden instalar las dependencias por medio de este comando.
 ```
-sudo pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 ## Antes de empezar
 > Fue necesario hacer el desarrollo en `Python2.7`, debido a que el SDK no funciona correctamente con las nuevas versiones de Python
@@ -16,13 +16,11 @@ Para correrlo, solo es necesario ejecutar el siguiente comando dentro de `desafi
 ```
 python app.py
 ```
-Luego, abrir el navegador en
-```
-localhost:8000/get_info
-```
-Esto nos creara dos archivos:
-- phones-data.csv
+
+Esto nos creara tres archivos:
+- phones-data.json
 - phones-specs.json
+- users-data.json
 
 Que luego servirán como fuentes de datos para alimentar los dashboards en **tableau**
 - Phones Dashboard.twb

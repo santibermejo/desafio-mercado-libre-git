@@ -1,0 +1,5 @@
+[file]
+code = 'TG-5d23e4e8383153000610ce14-200616880'
+url = 'http://localhost:8000'
+client_id = '3076720226288544'
+client_secret = 'L8A6zuXf9IsG2qzm1FL7ip3YsOl9do7C'
